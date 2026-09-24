@@ -1,8 +1,9 @@
-const DEFAULT_OPTIONS = { format: "a4", orientation: "auto", margin: 10 };
+const DEFAULT_OPTIONS = { format: "a4", orientation: "auto", margin: 10, preview: true };
 
 const formatEl = document.getElementById("format");
 const orientationEl = document.getElementById("orientation");
 const marginEl = document.getElementById("margin");
+const previewEl = document.getElementById("preview");
 const button = document.getElementById("start-select");
 const statusEl = document.getElementById("status");
 
@@ -10,6 +11,9 @@ chrome.storage.sync.get(DEFAULT_OPTIONS).then((options) => {
   formatEl.value = options.format;
   orientationEl.value = options.orientation;
   marginEl.value = options.margin;
+  previewEl.checked = options.preview;
+  // Enabled only now, so a quick click can't read (and save) an unfilled form.
+  button.disabled = false;
 });
 
 function readOptions() {
@@ -18,6 +22,7 @@ function readOptions() {
     format: formatEl.value,
     orientation: orientationEl.value,
     margin: Number.isFinite(margin) && margin >= 0 ? margin : DEFAULT_OPTIONS.margin,
+    preview: previewEl.checked,
   };
 }
 

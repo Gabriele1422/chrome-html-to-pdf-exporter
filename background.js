@@ -1,43 +1,45 @@
-// Prints the requesting tab to PDF with Chrome's own print engine (DevTools
-// Protocol Page.printToPDF). content.js has already applied a print stylesheet
-// that shows only the selected element.
+import { printTabToPdf } from "./pdf.js";
 
-const PAPER_SIZES_IN = {
-  a4: [8.27, 11.69],
-  a3: [11.69, 16.54],
-  letter: [8.5, 11],
-  legal: [8.5, 14],
-};
-const MM_PER_INCH = 25.4;
+// The preview shows the PDF from a URL in the extension's own origin: a blob: URL
+// would inherit the extension pages' CSP (object-src 'self'), which blocks Chrome's
+// PDF viewer. preview.js stores the file in Cache Storage (which only accepts
+// http(s) keys, hence the placeholder origin) and it is served at /preview-files/.
+const PREVIEW_CACHE_ORIGIN = "https://preview-files.invalid";
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action !== "PRINT_TO_PDF" || !sender.tab?.id) return;
-  printTabToPdf(sender.tab.id, request.options || {}).then(
-    (data) => sendResponse({ data }),
-    (err) => sendResponse({ error: err?.message || String(err) }),
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (url.origin !== location.origin || !url.pathname.startsWith("/preview-files/")) return;
+  event.respondWith(
+    caches.match(PREVIEW_CACHE_ORIGIN + url.pathname).then((response) => response || new Response("Not found", { status: 404 })),
   );
-  return true; // Respond asynchronously.
 });
 
-async function printTabToPdf(tabId, { format = "a4", landscape = false, margin = 10 }) {
-  const [width, height] = PAPER_SIZES_IN[format] || PAPER_SIZES_IN.a4;
-  const marginIn = margin / MM_PER_INCH;
-  const target = { tabId };
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const tab = sender.tab;
+  if (!tab?.id) return;
 
-  await chrome.debugger.attach(target, "1.3");
-  try {
-    const { data } = await chrome.debugger.sendCommand(target, "Page.printToPDF", {
-      landscape,
-      printBackground: true,
-      paperWidth: width,
-      paperHeight: height,
-      marginTop: marginIn,
-      marginBottom: marginIn,
-      marginLeft: marginIn,
-      marginRight: marginIn,
-    });
-    return data;
-  } finally {
-    await chrome.debugger.detach(target).catch(() => {});
+  if (request.action === "PRINT_TO_PDF") {
+    printTabToPdf(tab.id, request.options || {}).then(
+      (data) => sendResponse({ data }),
+      (err) => sendResponse({ error: err?.message || String(err) }),
+    );
+    return true; // Respond asynchronously.
   }
-}
+
+  if (request.action === "OPEN_PREVIEW") {
+    // Content scripts can't open tabs, so the service worker opens the preview
+    // next to the page it was exported from.
+    const params = new URLSearchParams({ ...request.params, tabId: String(tab.id) });
+    chrome.tabs
+      .create({
+        url: `${chrome.runtime.getURL("preview.html")}?${params}`,
+        index: tab.index + 1,
+        openerTabId: tab.id,
+      })
+      .then(
+        () => sendResponse({ ok: true }),
+        (err) => sendResponse({ error: err?.message || String(err) }),
+      );
+    return true;
+  }
+});
