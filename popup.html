@@ -42,6 +42,14 @@
       background-color: #93c5fd;
       cursor: default;
     }
+    label.check {
+      justify-content: flex-start;
+      gap: 6px;
+    }
+    label.check input {
+      width: auto;
+      margin: 0;
+    }
     #status {
       margin: 8px 0 0;
       color: #b91c1c;
@@ -74,7 +82,11 @@
   <label>Margin (mm)
     <input id="margin" type="number" min="0" max="50" step="1">
   </label>
-  <button id="start-select">Select Element</button>
+  <label class="check">
+    <input id="preview" type="checkbox">
+    Preview before download
+  </label>
+  <button id="start-select" disabled>Select Element</button>
   <p id="status" role="status"></p>
   <p class="hint">Click an element to export it. ↑/↓ selects the parent/child, Enter exports, Esc cancels.</p>
   <script src="popup.js"></script>

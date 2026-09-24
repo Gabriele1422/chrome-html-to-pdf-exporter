@@ -25,7 +25,10 @@
   });
 
   function startSelectionMode() {
-    if (isSelecting || isExporting) return;
+    if (isSelecting) return;
+    // Starting a new export ends a preview that is still open for this page.
+    if (previewElement) endPreview();
+    if (isExporting) return;
     isSelecting = true;
     createOverlay();
     showToast("Click an element to export · ↑/↓ parent/child · Enter export · Esc cancel");
@@ -237,25 +240,24 @@
 
   async function exportToPDF(element) {
     isExporting = true;
-    showToast("Generating PDF…");
+    const baseName = buildBaseName();
 
-    const rect = element.getBoundingClientRect();
-    const format = exportOptions.format || "a4";
-    const margin = exportOptions.margin ?? 10;
-    let orientation = exportOptions.orientation || "auto";
-    if (orientation === "auto") {
-      orientation = rect.width > rect.height ? "landscape" : "portrait";
+    if (exportOptions.preview !== false) {
+      try {
+        await openPreview(element, baseName);
+        return;
+      } catch (err) {
+        console.warn("Could not open the preview, downloading directly instead:", err);
+        endPreview();
+        isExporting = true;
+      }
     }
 
-    const baseName = buildBaseName();
-    const cleanup = preparePrintLayout(element, format, orientation, margin);
-
+    showToast("Generating PDF…");
+    const layout = applyLayout(element, exportOptions);
     try {
       await waitForImages(element);
-      const response = await chrome.runtime.sendMessage({
-        action: "PRINT_TO_PDF",
-        options: { format, landscape: orientation === "landscape", margin },
-      });
+      const response = await chrome.runtime.sendMessage({ action: "PRINT_TO_PDF", options: layout });
       if (!response || response.error) throw new Error(response?.error || "No response from the extension.");
       downloadPdf(response.data, `${baseName}.pdf`);
       showToast("PDF downloaded", 2500);
@@ -264,18 +266,111 @@
       // Fall back to Chrome's print dialog, which uses the same layout; "Save as PDF" there.
       console.warn("Direct PDF export failed, opening the print dialog instead:", err);
       hideToast();
-      const title = document.title;
-      document.title = baseName; // Chrome suggests the title as the file name.
-      try {
-        window.print();
-      } finally {
-        document.title = title;
-      }
+      printWithDialog(baseName);
     } finally {
-      cleanup();
+      releaseLayout();
       isExporting = false;
     }
   }
+
+  function printWithDialog(baseName) {
+    const title = document.title;
+    document.title = baseName; // Chrome suggests the title as the file name.
+    try {
+      window.print();
+    } finally {
+      document.title = title;
+    }
+  }
+
+  // --- Print layout -------------------------------------------------------------
+
+  let currentLayout = null;
+
+  // Applies (or re-applies with new settings) the print layout for `element` and
+  // returns the resolved page settings for printTabToPdf.
+  function applyLayout(element, options) {
+    releaseLayout();
+    const format = PAPER_SIZES_MM[options.format] ? options.format : "a4";
+    const margin = Number.isFinite(options.margin) && options.margin >= 0 ? options.margin : 10;
+    let orientation = options.orientation || "auto";
+    if (orientation === "auto") {
+      const rect = element.getBoundingClientRect();
+      orientation = rect.width > rect.height ? "landscape" : "portrait";
+    }
+    currentLayout = preparePrintLayout(element, format, orientation, margin);
+    return { format, landscape: orientation === "landscape", margin };
+  }
+
+  function releaseLayout() {
+    currentLayout?.();
+    currentLayout = null;
+  }
+
+  // --- Preview ------------------------------------------------------------------
+  // The preview tab (preview.html) connects to this script with a port. While it
+  // is connected the print layout stays applied, and the preview can re-apply it
+  // with different settings. When the preview tab closes, the port disconnects
+  // and the page goes back to normal.
+
+  let previewElement = null;
+  let previewPort = null;
+  let previewTimer = null;
+
+  async function openPreview(element, baseName) {
+    previewElement = element;
+    // Release the layout if the preview never connects (e.g. the tab failed to open).
+    previewTimer = setTimeout(endPreview, 30_000);
+    showToast("Opening preview…", 2500);
+    const response = await chrome.runtime.sendMessage({
+      action: "OPEN_PREVIEW",
+      params: {
+        name: baseName,
+        format: exportOptions.format || "a4",
+        orientation: exportOptions.orientation || "auto",
+        margin: String(exportOptions.margin ?? 10),
+      },
+    });
+    if (!response || response.error) throw new Error(response?.error || "No response from the extension.");
+  }
+
+  function endPreview() {
+    clearTimeout(previewTimer);
+    const port = previewPort;
+    previewPort = null;
+    previewElement = null;
+    port?.disconnect();
+    releaseLayout();
+    isExporting = false;
+  }
+
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== "pdf-preview") return;
+    if (!previewElement || previewPort) {
+      port.disconnect();
+      return;
+    }
+    clearTimeout(previewTimer);
+    previewPort = port;
+
+    port.onMessage.addListener(async (msg) => {
+      if (port !== previewPort) return;
+      if (msg.type === "APPLY_LAYOUT") {
+        const layout = applyLayout(previewElement, msg.options || {});
+        await waitForImages(previewElement);
+        try {
+          port.postMessage({ type: "LAYOUT_READY", id: msg.id, layout });
+        } catch {
+          // The preview closed meanwhile.
+        }
+      } else if (msg.type === "PRINT_DIALOG") {
+        printWithDialog(msg.name || buildBaseName());
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      if (port === previewPort) endPreview();
+    });
+  });
 
   function preparePrintLayout(element, format, orientation, margin) {
     const marked = [element];
