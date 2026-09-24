@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 220px;
+      padding: 12px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      margin: 0;
+      color: #111827;
+    }
+    label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    select, input {
+      width: 100px;
+      font: inherit;
+      padding: 2px 4px;
+    }
+    button {
+      width: 100%;
+      margin-top: 4px;
+      padding: 10px;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+    button:hover {
+      background-color: #1d4ed8;
+    }
+    button:disabled {
+      background-color: #93c5fd;
+      cursor: default;
+    }
+    #status {
+      margin: 8px 0 0;
+      color: #b91c1c;
+      min-height: 1em;
+    }
+    .hint {
+      margin: 8px 0 0;
+      color: #6b7280;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <label>Page size
+    <select id="format">
+      <option value="a4">A4</option>
+      <option value="letter">Letter</option>
+      <option value="legal">Legal</option>
+      <option value="a3">A3</option>
+    </select>
+  </label>
+  <label>Orientation
+    <select id="orientation">
+      <option value="auto">Auto</option>
+      <option value="portrait">Portrait</option>
+      <option value="landscape">Landscape</option>
+    </select>
+  </label>
+  <label>Margin (mm)
+    <input id="margin" type="number" min="0" max="50" step="1">
+  </label>
+  <button id="start-select">Select Element</button>
+  <p id="status" role="status"></p>
+  <p class="hint">Click an element to export it. ↑/↓ selects the parent/child, Enter exports, Esc cancels.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Select & Export Div to PDF",
+  "version": "2.0.0",
+  "description": "Select any element on a webpage and export it directly to PDF.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "debugger"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Export an element to PDF"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      }
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
